@@ -1,0 +1,13 @@
+# ignorint the cookies.json file
+cookies.json
+
+# ignoring the sqlite database file
+scrape_jobs.sqlite
+
+# ignoring the CVs directory
+CVs/
+
+# ignoring the logs directory
+__pycache__/
+
+
