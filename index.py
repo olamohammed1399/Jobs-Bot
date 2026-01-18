@@ -9,7 +9,7 @@ from urllib.parse import urlparse, parse_qs, urlencode
 import requests
 from bs4 import BeautifulSoup
 
-from telegram_bot_data import BOT_TOKEN, CHAT_ID
+from config import BOT_TOKEN, CHAT_ID
 
 DB_PATH = "scrape_jobs.sqlite"
 COOKIES_PATH = "cookies.json"
@@ -142,9 +142,11 @@ def mark_sent(con, url: str):
     con.commit()
 
 
+
+
 def telegram_send(text: str):
-    token = os.getenv("TELEGRAM_BOT_TOKEN", BOT_TOKEN)
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", CHAT_ID)
+    token = BOT_TOKEN
+    chat_id = CHAT_ID
     if not token or not chat_id:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID env vars.")
     url = f"https://api.telegram.org/bot{token}/sendMessage"

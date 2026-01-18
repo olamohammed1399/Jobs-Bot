@@ -10,4 +10,9 @@ CVs/
 # ignoring the logs directory
 __pycache__/
 
+venv/
 
+
+skills/
+
+.env
