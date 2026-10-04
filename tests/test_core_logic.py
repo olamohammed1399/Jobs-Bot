@@ -12,11 +12,14 @@ from index import (
     build_runtime_options,
     deliver_message,
     extract_jobs,
+    finish_scraper_run,
     format_job_message,
+    get_active_run,
     init_db,
     mark_sent,
     normalize_url,
     record_job,
+    start_scraper_run,
     title_matches,
 )
 from search_config import SettingsError, build_search_url, build_searches, validate_settings
@@ -245,6 +248,38 @@ def test_record_job_and_mark_sent_store_metadata(tmp_path):
         "frontend",
         "sent",
     )
+
+
+def test_start_scraper_run_acquires_single_active_lock(tmp_path):
+    con = init_db(tmp_path / "jobs.sqlite")
+
+    run_record = start_scraper_run(con, "cron-http")
+    duplicate = start_scraper_run(con, "cron-http")
+    active_run = get_active_run(con)
+
+    assert run_record is not None
+    assert duplicate is None
+    assert active_run == run_record
+
+
+def test_finish_scraper_run_releases_lock_and_records_status(tmp_path):
+    con = init_db(tmp_path / "jobs.sqlite")
+    run_record = start_scraper_run(con, "cron-http")
+
+    finish_scraper_run(con, run_record.id, "failed", "boom")
+
+    assert get_active_run(con) is None
+    row = con.execute(
+        """
+        SELECT status, finished_at, error
+        FROM scraper_runs
+        WHERE id = ?
+        """,
+        (run_record.id,),
+    ).fetchone()
+    assert row[0] == "failed"
+    assert row[1] is not None
+    assert row[2] == "boom"
 
 
 def test_deliver_message_dry_run_does_not_send(monkeypatch):

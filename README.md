@@ -106,9 +106,10 @@ Required web environment variables:
   `settings.json`.
 
 The `/run` endpoint returns `202 Accepted` when the request is authorized and
-the scraper run is scheduled. It returns `401 Unauthorized` when the
-`X-Cron-Secret` header is missing or invalid, and `503 Service Unavailable`
-when `CRON_SECRET` is not configured on the server.
+the scraper run is scheduled. It returns `409 Conflict` when another scraper run
+is already active, `401 Unauthorized` when the `X-Cron-Secret` header is missing
+or invalid, and `503 Service Unavailable` when `CRON_SECRET` is not configured
+on the server.
 
 ## Tests
 
@@ -179,9 +180,18 @@ For a smaller scheduled run, pass CLI options through the script:
 The bot stores richer job metadata in the `jobs` table while keeping the older
 `sent` table for compatibility with existing databases.
 
+Scheduled HTTP runs are tracked in `scraper_runs`, and the active run lock is
+stored in `run_locks` so overlapping cron calls cannot start duplicate scraper
+instances.
+
 Count jobs by status:
 ```bash
 sqlite3 scrape_jobs.sqlite "SELECT status, COUNT(*) FROM jobs GROUP BY status;"
+```
+
+Show recent scheduled runs:
+```bash
+sqlite3 scrape_jobs.sqlite "SELECT id, source, status, started_at, finished_at, error FROM scraper_runs ORDER BY id DESC LIMIT 10;"
 ```
 
 Show recently discovered jobs:
