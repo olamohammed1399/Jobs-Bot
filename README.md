@@ -104,12 +104,19 @@ Required web environment variables:
 - `CRON_SECRET`: shared secret required by `POST /run`.
 - `BOT_SETTINGS_PATH`: optional path to the runtime settings JSON. Defaults to
   `settings.json`.
+- `LINKEDIN_COOKIES_JSON`: optional full `cookies.json` content used by
+  zero-cost cloud hosts to rebuild runtime files at startup.
+- `BOT_SETTINGS_JSON`: optional full settings JSON used by zero-cost cloud hosts
+  to override the committed settings file at startup.
 
 The `/run` endpoint returns `202 Accepted` when the request is authorized and
 the scraper run is scheduled. It returns `409 Conflict` when another scraper run
 is already active, `401 Unauthorized` when the `X-Cron-Secret` header is missing
 or invalid, and `503 Service Unavailable` when `CRON_SECRET` is not configured
 on the server.
+
+For a zero-cost cloud deployment path, see
+[docs/zero-cost-hosting.md](docs/zero-cost-hosting.md).
 
 ## Tests
 
@@ -174,6 +181,8 @@ For a smaller scheduled run, pass CLI options through the script:
 - `cookies.json`: exported LinkedIn cookies. Do not commit it.
 - `scrape_jobs.sqlite`: local database used to avoid sending duplicates.
 - `logs/bot.log`: run diagnostics for scheduled executions.
+- `render.yaml`: Render Free Web Service blueprint for the zero-cost hosting
+  path.
 
 ### Inspecting The Database
 
