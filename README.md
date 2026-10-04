@@ -117,6 +117,8 @@ on the server.
 
 For a zero-cost cloud deployment path, see
 [docs/zero-cost-hosting.md](docs/zero-cost-hosting.md).
+After the app is deployed, connect cron-job.org using
+[docs/cron-job-org-setup.md](docs/cron-job-org-setup.md).
 
 ## Tests
 
