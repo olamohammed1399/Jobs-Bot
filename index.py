@@ -107,16 +107,20 @@ def telegram_send(text: str):
     if not token or not chat_id:
         raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID env vars.")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    r = requests.post(
-        url,
-        json={
-            "chat_id": chat_id,
-            "text": text,
-            "disable_web_page_preview": TELEGRAM_DISABLE_WEB_PAGE_PREVIEW,
-        },
-        timeout=20,
-    )
-    r.raise_for_status()
+    try:
+        r = requests.post(
+            url,
+            json={
+                "chat_id": chat_id,
+                "text": text,
+                "disable_web_page_preview": TELEGRAM_DISABLE_WEB_PAGE_PREVIEW,
+            },
+            timeout=20,
+        )
+        r.raise_for_status()
+    except requests.exceptions.RequestException:
+        LOGGER.exception("Telegram send failed.")
+        raise
 
 
 def load_cookies(path: str):
@@ -256,10 +260,11 @@ def format_job_message(job, search):
 def deliver_message(text: str, options: RuntimeOptions) -> bool:
     if options.dry_run or options.no_telegram:
         mode = "DRY RUN" if options.dry_run else "NO TELEGRAM"
-        print(f"[{mode}] Would send:\n{text}\n")
+        LOGGER.info("%s would send message:\n%s", mode, text)
         return False
 
     telegram_send(text)
+    LOGGER.info("Telegram message sent.")
     return True
 
 
@@ -321,9 +326,10 @@ def fetch_with_backoff(session, url: str):
         except requests.exceptions.RequestException as exc:
             last_error = exc
             wait_seconds = (2 ** attempt) * 15 + random.uniform(2, 8)
-            print(
-                f"LinkedIn request failed ({exc.__class__.__name__}). "
-                f"Retrying in {wait_seconds:.1f}s..."
+            LOGGER.warning(
+                "LinkedIn request failed (%s). Retrying in %.1fs.",
+                exc.__class__.__name__,
+                wait_seconds,
             )
             time.sleep(wait_seconds)
             continue
@@ -338,21 +344,32 @@ def fetch_with_backoff(session, url: str):
             wait_seconds = (2 ** attempt) * 30
 
         wait_seconds += random.uniform(2, 8)
-        print(
-            f"LinkedIn returned {resp.status_code}. "
-            f"Retrying in {wait_seconds:.1f}s..."
+        LOGGER.warning(
+            "LinkedIn returned retryable status %s. Retrying in %.1fs.",
+            resp.status_code,
+            wait_seconds,
         )
         time.sleep(wait_seconds)
 
     if last_error:
-        print(f"Skipping page after repeated request failures: {last_error}")
+        LOGGER.error("Skipping page after repeated request failures: %s", last_error)
         return None
 
-    print(f"Skipping page after repeated LinkedIn status {resp.status_code}.")
+    LOGGER.error("Skipping page after repeated LinkedIn status %s.", resp.status_code)
     return resp
 
 
 def main(options: RuntimeOptions):
+    setup_logging(options.debug)
+    LOGGER.info(
+        "Bot started. searches=%s max_pages=%s max_send=%s dry_run=%s no_telegram=%s debug=%s",
+        len(SEARCHES),
+        options.max_pages,
+        options.max_send,
+        options.dry_run,
+        options.no_telegram,
+        options.debug,
+    )
     con = init_db()
     session = requests.Session()
     session.cookies.update(load_cookies(COOKIES_PATH))
@@ -366,28 +383,63 @@ def main(options: RuntimeOptions):
     )
 
     sent_count = 0
+    extracted_count = 0
+    duplicate_count = 0
+    title_skip_count = 0
     seen = set()
 
     for search in SEARCHES:
         search_url = search["url"]
+        LOGGER.info(
+            "Starting search. location=%s keyword_group=%s keyword=%s",
+            search["location"],
+            search["keyword_group"],
+            search["keyword"],
+        )
         for page in range(options.max_pages):
             start = page * PAGE_SIZE
             url = build_guest_api_url(search_url, start)
+            LOGGER.info(
+                "Fetching page. location=%s keyword=%s page=%s start=%s",
+                search["location"],
+                search["keyword"],
+                page,
+                start,
+            )
             resp = fetch_with_backoff(session, url)
             if resp is None:
                 break
 
             if resp.status_code != 200:
-                print(f"Failed to fetch page {page} for {search_url}: {resp.status_code}")
+                LOGGER.warning(
+                    "Failed to fetch page. location=%s keyword=%s page=%s status=%s",
+                    search["location"],
+                    search["keyword"],
+                    page,
+                    resp.status_code,
+                )
                 break
 
             if "signin" in resp.text.lower() or "challenge" in resp.text.lower():
-                print("LinkedIn returned a login or challenge page. Cookies may be invalid.")
+                LOGGER.error("LinkedIn returned a login or challenge page. Cookies may be invalid.")
                 return
 
             jobs = extract_jobs(resp.text)
+            extracted_count += len(jobs)
+            LOGGER.info(
+                "Extracted jobs. location=%s keyword=%s page=%s count=%s",
+                search["location"],
+                search["keyword"],
+                page,
+                len(jobs),
+            )
             if not jobs:
-                print(f"No jobs found for {search_url}.")
+                LOGGER.info(
+                    "No jobs found. location=%s keyword=%s page=%s",
+                    search["location"],
+                    search["keyword"],
+                    page,
+                )
                 break
 
             for job in jobs:
@@ -395,17 +447,20 @@ def main(options: RuntimeOptions):
                 job_url = job["url"]
 
                 if not job_url or job_url in seen:
+                    duplicate_count += 1
                     continue
                 seen.add(job_url)
 
                 if title and not title_matches(title):
+                    title_skip_count += 1
                     if options.debug:
-                        print(f"Skipped title mismatch: {title}")
+                        LOGGER.debug("Skipped title mismatch: %s", title)
                     continue
 
                 if already_sent(con, job_url):
+                    duplicate_count += 1
                     if options.debug:
-                        print(f"Skipped previously sent job: {job_url}")
+                        LOGGER.debug("Skipped previously sent job: %s", job_url)
                     continue
 
                 sent = deliver_message(format_job_message(job, search), options)
@@ -420,6 +475,13 @@ def main(options: RuntimeOptions):
                         "Reason: reached max jobs for this run.",
                         options,
                     )
+                    LOGGER.info(
+                        "Run paused. processed=%s extracted=%s duplicates=%s title_skips=%s",
+                        sent_count,
+                        extracted_count,
+                        duplicate_count,
+                        title_skip_count,
+                    )
                     return
 
             time.sleep(random.uniform(8, 15))
@@ -431,6 +493,14 @@ def main(options: RuntimeOptions):
         )
     else:
         deliver_message("Run complete.\nNo new jobs found.", options)
+
+    LOGGER.info(
+        "Run complete. processed=%s extracted=%s duplicates=%s title_skips=%s",
+        sent_count,
+        extracted_count,
+        duplicate_count,
+        title_skip_count,
+    )
 
 
 if __name__ == "__main__":
