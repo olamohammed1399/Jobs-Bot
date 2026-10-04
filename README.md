@@ -36,6 +36,12 @@ This bot scrapes job listings from LinkedIn and sends them to a Telegram channel
      TELEGRAM_BOT_TOKEN="your_token_here"
      TELEGRAM_CHAT_ID="your_chat_id_here"
      ```
+   - Edit `search_config.py` to tune job searches:
+     - Add or update entries in `LOCATIONS` for each target market.
+     - Set a location's `enabled` value to `True` or `False`.
+     - Add or update entries in `KEYWORD_GROUPS` for role families.
+     - Set a keyword group's `enabled` value to `True` or `False`.
+     - Use `work_type` values of `all` or `remote`.
 
 ## Usage
 
