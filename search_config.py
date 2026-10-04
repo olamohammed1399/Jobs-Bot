@@ -229,9 +229,14 @@ def build_search_url(location, keyword):
     return "https://www.linkedin.com/jobs/search/?" + "&".join(query_parts)
 
 
-def build_search_urls(locations=LOCATIONS, keyword_groups=KEYWORD_GROUPS):
+def build_searches(locations=LOCATIONS, keyword_groups=KEYWORD_GROUPS):
     return [
-        build_search_url(location, keyword)
+        {
+            "url": build_search_url(location, keyword),
+            "location": location["name"],
+            "keyword_group": group["name"],
+            "keyword": keyword,
+        }
         for location in locations
         if location["enabled"]
         for group in keyword_groups
@@ -240,4 +245,12 @@ def build_search_urls(locations=LOCATIONS, keyword_groups=KEYWORD_GROUPS):
     ]
 
 
-SEARCH_URLS = build_search_urls()
+def build_search_urls(locations=LOCATIONS, keyword_groups=KEYWORD_GROUPS):
+    return [
+        search["url"]
+        for search in build_searches(locations, keyword_groups)
+    ]
+
+
+SEARCHES = build_searches()
+SEARCH_URLS = [search["url"] for search in SEARCHES]
