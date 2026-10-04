@@ -51,6 +51,26 @@ Run the scraper:
 python index.py
 ```
 
+Preview matching jobs without sending Telegram messages or marking jobs as sent:
+```bash
+python index.py --dry-run
+```
+
+Limit a one-off run:
+```bash
+python index.py --max-pages 1 --max-send 5
+```
+
+Print extra skip details while testing:
+```bash
+python index.py --dry-run --debug
+```
+
+Collect matching jobs in the terminal without Telegram delivery:
+```bash
+python index.py --no-telegram
+```
+
 ## Troubleshooting
 
 - **Login Challenge**: If you see "LinkedIn returned a login or challenge page", your `cookies.json` might be expired or invalid. Refresh them by logging into LinkedIn in your browser and re-exporting the cookies.
