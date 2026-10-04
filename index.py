@@ -42,6 +42,14 @@ class RuntimeOptions:
     max_send: int | None = None
 
 
+@dataclass
+class RunRecord:
+    id: int
+    status: str
+    started_at: str
+    source: str
+
+
 def setup_logging(debug: bool = False):
     LOG_DIR.mkdir(exist_ok=True)
 
@@ -103,8 +111,103 @@ def init_db(db_path):
         """,
         (datetime.now().isoformat(),),
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scraper_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            status TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            error TEXT
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS run_locks (
+            name TEXT PRIMARY KEY,
+            run_id INTEGER NOT NULL,
+            acquired_at TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES scraper_runs(id)
+        )
+        """
+    )
     con.commit()
     return con
+
+
+def get_active_run(con) -> RunRecord | None:
+    cur = con.cursor()
+    row = cur.execute(
+        """
+        SELECT scraper_runs.id,
+               scraper_runs.status,
+               scraper_runs.started_at,
+               scraper_runs.source
+        FROM run_locks
+        JOIN scraper_runs ON scraper_runs.id = run_locks.run_id
+        WHERE run_locks.name = 'scraper'
+        """,
+    ).fetchone()
+    if not row:
+        return None
+    return RunRecord(id=row[0], status=row[1], started_at=row[2], source=row[3])
+
+
+def start_scraper_run(con, source: str) -> RunRecord | None:
+    now = datetime.now().isoformat()
+    cur = con.cursor()
+    try:
+        cur.execute("BEGIN IMMEDIATE")
+        if get_active_run(con):
+            con.rollback()
+            return None
+        cur.execute(
+            """
+            INSERT INTO scraper_runs(source, status, started_at)
+            VALUES(?, 'running', ?)
+            """,
+            (source, now),
+        )
+        run_id = cur.lastrowid
+        cur.execute(
+            """
+            INSERT INTO run_locks(name, run_id, acquired_at)
+            VALUES('scraper', ?, ?)
+            """,
+            (run_id, now),
+        )
+        con.commit()
+    except sqlite3.Error:
+        con.rollback()
+        raise
+
+    return RunRecord(id=run_id, status="running", started_at=now, source=source)
+
+
+def finish_scraper_run(con, run_id: int, status: str, error: str | None = None):
+    now = datetime.now().isoformat()
+    cur = con.cursor()
+    cur.execute(
+        """
+        UPDATE scraper_runs
+        SET status = ?,
+            finished_at = ?,
+            error = ?
+        WHERE id = ?
+        """,
+        (status, now, error, run_id),
+    )
+    cur.execute(
+        """
+        DELETE FROM run_locks
+        WHERE name = 'scraper'
+          AND run_id = ?
+        """,
+        (run_id,),
+    )
+    con.commit()
 
 
 def already_sent(con, url: str) -> bool:
