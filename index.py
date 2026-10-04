@@ -1,8 +1,10 @@
+import argparse
 import re
 import json
 import time
 import random
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode
 
@@ -28,6 +30,16 @@ from search_config import (
 MAX_FETCH_RETRIES = 3
 REQUEST_TIMEOUT = (10, 30)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+@dataclass
+class RuntimeOptions:
+    dry_run: bool = False
+    no_telegram: bool = False
+    debug: bool = False
+    max_pages: int = MAX_PAGES
+    max_send: int = MAX_SEND_PER_RUN
+
 
 def init_db():
     con = sqlite3.connect(DB_PATH)
@@ -211,6 +223,65 @@ def format_job_message(job, search):
     return "\n".join(lines)
 
 
+def deliver_message(text: str, options: RuntimeOptions) -> bool:
+    if options.dry_run or options.no_telegram:
+        mode = "DRY RUN" if options.dry_run else "NO TELEGRAM"
+        print(f"[{mode}] Would send:\n{text}\n")
+        return False
+
+    telegram_send(text)
+    return True
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Scrape LinkedIn jobs and send matching jobs to Telegram."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch and print matching jobs without sending Telegram messages or marking them sent.",
+    )
+    parser.add_argument(
+        "--no-telegram",
+        action="store_true",
+        help="Print matching jobs without sending Telegram messages or marking them sent.",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=MAX_PAGES,
+        help=f"Override pages fetched per search. Default: {MAX_PAGES}.",
+    )
+    parser.add_argument(
+        "--max-send",
+        type=int,
+        default=MAX_SEND_PER_RUN,
+        help=f"Override max matching jobs processed per run. Default: {MAX_SEND_PER_RUN}.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print extra skip/debug information while running.",
+    )
+    return parser.parse_args()
+
+
+def build_runtime_options(args):
+    if args.max_pages < 1:
+        raise ValueError("--max-pages must be at least 1.")
+    if args.max_send < 1:
+        raise ValueError("--max-send must be at least 1.")
+
+    return RuntimeOptions(
+        dry_run=args.dry_run,
+        no_telegram=args.no_telegram,
+        debug=args.debug,
+        max_pages=args.max_pages,
+        max_send=args.max_send,
+    )
+
+
 def fetch_with_backoff(session, url: str):
     last_error = None
 
@@ -251,7 +322,7 @@ def fetch_with_backoff(session, url: str):
     return resp
 
 
-def main():
+def main(options: RuntimeOptions):
     con = init_db()
     session = requests.Session()
     session.cookies.update(load_cookies(COOKIES_PATH))
@@ -269,7 +340,7 @@ def main():
 
     for search in SEARCHES:
         search_url = search["url"]
-        for page in range(MAX_PAGES):
+        for page in range(options.max_pages):
             start = page * PAGE_SIZE
             url = build_guest_api_url(search_url, start)
             resp = fetch_with_backoff(session, url)
@@ -298,31 +369,40 @@ def main():
                 seen.add(job_url)
 
                 if title and not title_matches(title):
+                    if options.debug:
+                        print(f"Skipped title mismatch: {title}")
                     continue
 
                 if already_sent(con, job_url):
+                    if options.debug:
+                        print(f"Skipped previously sent job: {job_url}")
                     continue
 
-                telegram_send(format_job_message(job, search))
-                mark_sent(con, job_url)
+                sent = deliver_message(format_job_message(job, search), options)
+                if sent:
+                    mark_sent(con, job_url)
                 sent_count += 1
 
-                if sent_count >= MAX_SEND_PER_RUN:
-                    telegram_send(
+                if sent_count >= options.max_send:
+                    deliver_message(
                         "Run paused.\n"
-                        f"Sent: {sent_count} job(s)\n"
-                        "Reason: reached max jobs for this run."
+                        f"Processed: {sent_count} matching job(s)\n"
+                        "Reason: reached max jobs for this run.",
+                        options,
                     )
                     return
 
             time.sleep(random.uniform(8, 15))
 
     if sent_count:
-        telegram_send(f"Run complete.\nSent: {sent_count} new job(s).")
+        deliver_message(
+            f"Run complete.\nProcessed: {sent_count} matching job(s).",
+            options,
+        )
     else:
-        telegram_send("Run complete.\nNo new jobs found.")
+        deliver_message("Run complete.\nNo new jobs found.", options)
 
 
 if __name__ == "__main__":
-    main()
+    main(build_runtime_options(parse_args()))
 

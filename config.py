@@ -42,6 +42,3 @@ IS_EASY_APPLY = 'true'             # for easy apply filter
 MAX_PAGES = 5
 PAGE_SIZE = 25
 MAX_SEND_PER_RUN = 20
-
-if not BOT_TOKEN or not CHAT_ID:
-    raise RuntimeError("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID env vars.")
