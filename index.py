@@ -413,6 +413,49 @@ def build_runtime_options(args, settings):
     )
 
 
+def build_runtime_options_from_values(
+    settings,
+    *,
+    config_path: str = str(DEFAULT_SETTINGS_PATH),
+    dry_run: bool = False,
+    no_telegram: bool = False,
+    debug: bool = False,
+    max_pages: int | None = None,
+    max_send: int | None = None,
+):
+    args = argparse.Namespace(
+        config=config_path,
+        dry_run=dry_run,
+        no_telegram=no_telegram,
+        debug=debug,
+        max_pages=max_pages,
+        max_send=max_send,
+    )
+    return build_runtime_options(args, settings)
+
+
+def run_bot(
+    *,
+    config_path: str = str(DEFAULT_SETTINGS_PATH),
+    dry_run: bool = False,
+    no_telegram: bool = False,
+    debug: bool = False,
+    max_pages: int | None = None,
+    max_send: int | None = None,
+):
+    settings = load_settings(config_path)
+    options = build_runtime_options_from_values(
+        settings,
+        config_path=config_path,
+        dry_run=dry_run,
+        no_telegram=no_telegram,
+        debug=debug,
+        max_pages=max_pages,
+        max_send=max_send,
+    )
+    main(options, settings)
+
+
 def fetch_with_backoff(session, url: str, request_timeout):
     last_error = None
 
@@ -614,6 +657,12 @@ def main(options: RuntimeOptions, settings):
 
 if __name__ == "__main__":
     cli_args = parse_args()
-    app_settings = load_settings(cli_args.config)
-    main(build_runtime_options(cli_args, app_settings), app_settings)
+    run_bot(
+        config_path=cli_args.config,
+        dry_run=cli_args.dry_run,
+        no_telegram=cli_args.no_telegram,
+        debug=cli_args.debug,
+        max_pages=cli_args.max_pages,
+        max_send=cli_args.max_send,
+    )
 

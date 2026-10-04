@@ -12,6 +12,8 @@ logs/
 
 # ignoring the Python cache directory
 __pycache__/
+.pytest_cache/
+pytest-of-*/
 
 venv/
 

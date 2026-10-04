@@ -36,6 +36,7 @@ This bot scrapes job listings from LinkedIn and sends them to a Telegram channel
      TELEGRAM_BOT_TOKEN="your_token_here"
      TELEGRAM_CHAT_ID="your_chat_id_here"
      TELEGRAM_DISABLE_WEB_PAGE_PREVIEW="true"
+     CRON_SECRET="use-a-long-random-secret-for-the-web-trigger"
      ```
    - Edit `settings.json` to tune runtime behavior and job searches:
      - Update `hours`, `max_pages`, `page_size`, `max_send_per_run`, or `request_timeout`.
@@ -77,6 +78,37 @@ Run with a different settings file:
 ```bash
 python index.py --config settings.example.json --dry-run
 ```
+
+## HTTP Trigger
+
+The bot can expose a small HTTP app for schedulers such as cron-job.org. The
+scheduled request calls the hosted app, and the app starts a scraper run.
+
+Start the web app locally:
+```bash
+uvicorn web_app:app --host 0.0.0.0 --port 8000
+```
+
+Health check:
+```bash
+curl http://localhost:8000/health
+```
+
+Trigger a run:
+```bash
+curl -X POST http://localhost:8000/run -H "X-Cron-Secret: your-secret"
+```
+
+Required web environment variables:
+
+- `CRON_SECRET`: shared secret required by `POST /run`.
+- `BOT_SETTINGS_PATH`: optional path to the runtime settings JSON. Defaults to
+  `settings.json`.
+
+The `/run` endpoint returns `202 Accepted` when the request is authorized and
+the scraper run is scheduled. It returns `401 Unauthorized` when the
+`X-Cron-Secret` header is missing or invalid, and `503 Service Unavailable`
+when `CRON_SECRET` is not configured on the server.
 
 ## Tests
 
@@ -135,6 +167,8 @@ For a smaller scheduled run, pass CLI options through the script:
 ### Runtime Files
 
 - `.env`: Telegram credentials and notification settings. Do not commit it.
+- `CRON_SECRET`: secret value in `.env` or the production host environment used
+  to protect the scheduled HTTP trigger.
 - `settings.json`: runtime settings, locations, keyword groups, and title filters.
 - `cookies.json`: exported LinkedIn cookies. Do not commit it.
 - `scrape_jobs.sqlite`: local database used to avoid sending duplicates.
