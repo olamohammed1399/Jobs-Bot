@@ -157,9 +157,3 @@ def build_search_urls(settings):
         search["url"]
         for search in build_searches(settings)
     ]
-
-
-SETTINGS = load_settings()
-SEARCHES = build_searches(SETTINGS)
-SEARCH_URLS = [search["url"] for search in SEARCHES]
-TITLE_KEYWORDS = SETTINGS["title_keywords"]

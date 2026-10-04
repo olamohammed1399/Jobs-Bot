@@ -16,21 +16,16 @@ from bs4 import BeautifulSoup
 from config import (
     BOT_TOKEN,
     CHAT_ID,
-    DB_PATH,
-    COOKIES_PATH,
-    MAX_PAGES,
-    PAGE_SIZE,
-    MAX_SEND_PER_RUN,
     TELEGRAM_DISABLE_WEB_PAGE_PREVIEW,
 )
 
 from search_config import (
-    SEARCHES,
-    TITLE_KEYWORDS
+    DEFAULT_SETTINGS_PATH,
+    build_searches,
+    load_settings,
 )
 
 MAX_FETCH_RETRIES = 3
-REQUEST_TIMEOUT = (10, 30)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 LOG_DIR = Path("logs")
 LOG_FILE = LOG_DIR / "bot.log"
@@ -42,8 +37,9 @@ class RuntimeOptions:
     dry_run: bool = False
     no_telegram: bool = False
     debug: bool = False
-    max_pages: int = MAX_PAGES
-    max_send: int = MAX_SEND_PER_RUN
+    config_path: str = str(DEFAULT_SETTINGS_PATH)
+    max_pages: int | None = None
+    max_send: int | None = None
 
 
 def setup_logging(debug: bool = False):
@@ -71,8 +67,8 @@ def setup_logging(debug: bool = False):
     LOGGER.addHandler(file_handler)
 
 
-def init_db():
-    con = sqlite3.connect(DB_PATH)
+def init_db(db_path):
+    con = sqlite3.connect(db_path)
     cur = con.cursor()
     cur.execute(
         """
@@ -155,9 +151,9 @@ def normalize_url(url: str) -> str:
     return url
 
 
-def title_matches(title: str) -> bool:
+def title_matches(title: str, title_keywords) -> bool:
     t = (title or "").lower()
-    return any(k in t for k in TITLE_KEYWORDS)
+    return any(k in t for k in title_keywords)
 
 
 def clean_text(text: str | None) -> str | None:
@@ -273,6 +269,11 @@ def parse_args():
         description="Scrape LinkedIn jobs and send matching jobs to Telegram."
     )
     parser.add_argument(
+        "--config",
+        default=str(DEFAULT_SETTINGS_PATH),
+        help=f"Path to runtime settings JSON. Default: {DEFAULT_SETTINGS_PATH}.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Fetch and print matching jobs without sending Telegram messages or marking them sent.",
@@ -285,14 +286,14 @@ def parse_args():
     parser.add_argument(
         "--max-pages",
         type=int,
-        default=MAX_PAGES,
-        help=f"Override pages fetched per search. Default: {MAX_PAGES}.",
+        default=None,
+        help="Override pages fetched per search for one run.",
     )
     parser.add_argument(
         "--max-send",
         type=int,
-        default=MAX_SEND_PER_RUN,
-        help=f"Override max matching jobs processed per run. Default: {MAX_SEND_PER_RUN}.",
+        default=None,
+        help="Override max matching jobs processed for one run.",
     )
     parser.add_argument(
         "--debug",
@@ -302,27 +303,31 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_runtime_options(args):
-    if args.max_pages < 1:
+def build_runtime_options(args, settings):
+    max_pages = args.max_pages if args.max_pages is not None else settings["max_pages"]
+    max_send = args.max_send if args.max_send is not None else settings["max_send_per_run"]
+
+    if max_pages < 1:
         raise ValueError("--max-pages must be at least 1.")
-    if args.max_send < 1:
+    if max_send < 1:
         raise ValueError("--max-send must be at least 1.")
 
     return RuntimeOptions(
         dry_run=args.dry_run,
         no_telegram=args.no_telegram,
         debug=args.debug,
-        max_pages=args.max_pages,
-        max_send=args.max_send,
+        config_path=args.config,
+        max_pages=max_pages,
+        max_send=max_send,
     )
 
 
-def fetch_with_backoff(session, url: str):
+def fetch_with_backoff(session, url: str, request_timeout):
     last_error = None
 
     for attempt in range(MAX_FETCH_RETRIES):
         try:
-            resp = session.get(url, timeout=REQUEST_TIMEOUT)
+            resp = session.get(url, timeout=request_timeout)
         except requests.exceptions.RequestException as exc:
             last_error = exc
             wait_seconds = (2 ** attempt) * 15 + random.uniform(2, 8)
@@ -359,20 +364,26 @@ def fetch_with_backoff(session, url: str):
     return resp
 
 
-def main(options: RuntimeOptions):
+def main(options: RuntimeOptions, settings):
     setup_logging(options.debug)
+    searches = build_searches(settings)
+    title_keywords = settings["title_keywords"]
+    page_size = settings["page_size"]
+    request_timeout = tuple(settings["request_timeout"])
+
     LOGGER.info(
-        "Bot started. searches=%s max_pages=%s max_send=%s dry_run=%s no_telegram=%s debug=%s",
-        len(SEARCHES),
+        "Bot started. config=%s searches=%s max_pages=%s max_send=%s dry_run=%s no_telegram=%s debug=%s",
+        options.config_path,
+        len(searches),
         options.max_pages,
         options.max_send,
         options.dry_run,
         options.no_telegram,
         options.debug,
     )
-    con = init_db()
+    con = init_db(settings["db_path"])
     session = requests.Session()
-    session.cookies.update(load_cookies(COOKIES_PATH))
+    session.cookies.update(load_cookies(settings["cookies_path"]))
     session.headers.update(
         {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -388,7 +399,7 @@ def main(options: RuntimeOptions):
     title_skip_count = 0
     seen = set()
 
-    for search in SEARCHES:
+    for search in searches:
         search_url = search["url"]
         LOGGER.info(
             "Starting search. location=%s keyword_group=%s keyword=%s",
@@ -397,7 +408,7 @@ def main(options: RuntimeOptions):
             search["keyword"],
         )
         for page in range(options.max_pages):
-            start = page * PAGE_SIZE
+            start = page * page_size
             url = build_guest_api_url(search_url, start)
             LOGGER.info(
                 "Fetching page. location=%s keyword=%s page=%s start=%s",
@@ -406,7 +417,7 @@ def main(options: RuntimeOptions):
                 page,
                 start,
             )
-            resp = fetch_with_backoff(session, url)
+            resp = fetch_with_backoff(session, url, request_timeout)
             if resp is None:
                 break
 
@@ -451,7 +462,7 @@ def main(options: RuntimeOptions):
                     continue
                 seen.add(job_url)
 
-                if title and not title_matches(title):
+                if title and not title_matches(title, title_keywords):
                     title_skip_count += 1
                     if options.debug:
                         LOGGER.debug("Skipped title mismatch: %s", title)
@@ -504,5 +515,7 @@ def main(options: RuntimeOptions):
 
 
 if __name__ == "__main__":
-    main(build_runtime_options(parse_args()))
+    cli_args = parse_args()
+    app_settings = load_settings(cli_args.config)
+    main(build_runtime_options(cli_args, app_settings), app_settings)
 
