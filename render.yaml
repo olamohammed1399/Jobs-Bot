@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: scrape-bot-cron
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/prepare_runtime_files.py && uvicorn web_app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: BOT_SETTINGS_PATH
+        value: settings.json
+      - key: TELEGRAM_DISABLE_WEB_PAGE_PREVIEW
+        value: "true"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: LINKEDIN_COOKIES_JSON
+        sync: false
+      - key: LINKEDIN_COOKIES_BASE64
+        sync: false
+      - key: BOT_SETTINGS_JSON
+        sync: false
