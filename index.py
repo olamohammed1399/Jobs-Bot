@@ -1,4 +1,5 @@
 import argparse
+import logging
 import re
 import json
 import time
@@ -6,6 +7,7 @@ import random
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode
 
 import requests
@@ -30,6 +32,9 @@ from search_config import (
 MAX_FETCH_RETRIES = 3
 REQUEST_TIMEOUT = (10, 30)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+LOG_DIR = Path("logs")
+LOG_FILE = LOG_DIR / "bot.log"
+LOGGER = logging.getLogger("job_scraper_bot")
 
 
 @dataclass
@@ -39,6 +44,31 @@ class RuntimeOptions:
     debug: bool = False
     max_pages: int = MAX_PAGES
     max_send: int = MAX_SEND_PER_RUN
+
+
+def setup_logging(debug: bool = False):
+    LOG_DIR.mkdir(exist_ok=True)
+
+    level = logging.DEBUG if debug else logging.INFO
+    LOGGER.setLevel(level)
+    LOGGER.handlers.clear()
+    LOGGER.propagate = False
+
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+
+    file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    LOGGER.addHandler(console_handler)
+    LOGGER.addHandler(file_handler)
 
 
 def init_db():
