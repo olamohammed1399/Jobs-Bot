@@ -37,12 +37,14 @@ This bot scrapes job listings from LinkedIn and sends them to a Telegram channel
      TELEGRAM_CHAT_ID="your_chat_id_here"
      TELEGRAM_DISABLE_WEB_PAGE_PREVIEW="true"
      ```
-   - Edit `search_config.py` to tune job searches:
-     - Add or update entries in `LOCATIONS` for each target market.
-     - Set a location's `enabled` value to `True` or `False`.
-     - Add or update entries in `KEYWORD_GROUPS` for role families.
-     - Set a keyword group's `enabled` value to `True` or `False`.
-     - Use `work_type` values of `all` or `remote`.
+   - Edit `settings.json` to tune runtime behavior and job searches:
+     - Update `hours`, `max_pages`, `page_size`, `max_send_per_run`, or `request_timeout`.
+     - Add or update entries in `locations` for each target market.
+     - Set a location's `enabled` value to `true` or `false`.
+     - Add or update entries in `keyword_groups` for role families.
+     - Set a keyword group's `enabled` value to `true` or `false`.
+     - Use `work_type` values defined in `work_type_filters`, such as `all` or `remote`.
+   - Use `settings.example.json` as a safe reference for the expected structure.
 
 ## Usage
 
@@ -69,6 +71,11 @@ python index.py --dry-run --debug
 Collect matching jobs in the terminal without Telegram delivery:
 ```bash
 python index.py --no-telegram
+```
+
+Run with a different settings file:
+```bash
+python index.py --config settings.example.json --dry-run
 ```
 
 ## Logs
@@ -113,6 +120,7 @@ For a smaller scheduled run, pass CLI options through the script:
 ### Runtime Files
 
 - `.env`: Telegram credentials and notification settings. Do not commit it.
+- `settings.json`: runtime settings, locations, keyword groups, and title filters.
 - `cookies.json`: exported LinkedIn cookies. Do not commit it.
 - `scrape_jobs.sqlite`: local database used to avoid sending duplicates.
 - `logs/bot.log`: run diagnostics for scheduled executions.
