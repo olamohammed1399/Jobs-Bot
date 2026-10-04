@@ -16,11 +16,12 @@ from config import (
     COOKIES_PATH,
     MAX_PAGES,
     PAGE_SIZE,
-    MAX_SEND_PER_RUN
+    MAX_SEND_PER_RUN,
+    TELEGRAM_DISABLE_WEB_PAGE_PREVIEW,
 )
 
 from search_config import (
-    SEARCH_URLS,
+    SEARCHES,
     TITLE_KEYWORDS
 )
 
@@ -66,7 +67,11 @@ def telegram_send(text: str):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     r = requests.post(
         url,
-        json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+        json={
+            "chat_id": chat_id,
+            "text": text,
+            "disable_web_page_preview": TELEGRAM_DISABLE_WEB_PAGE_PREVIEW,
+        },
         timeout=20,
     )
     r.raise_for_status()
@@ -109,6 +114,47 @@ def title_matches(title: str) -> bool:
     return any(k in t for k in TITLE_KEYWORDS)
 
 
+def clean_text(text: str | None) -> str | None:
+    if not text:
+        return None
+    return " ".join(text.split()) or None
+
+
+def first_text(parent, selectors):
+    if not parent:
+        return None
+    for selector in selectors:
+        node = parent.select_one(selector)
+        if node:
+            text = clean_text(node.get_text(" ", strip=True))
+            if text:
+                return text
+    return None
+
+
+def find_job_card(link):
+    return link.find_parent(
+        lambda tag: tag.name in {"li", "div"}
+        and any(
+            class_name in {
+                "base-card",
+                "base-search-card",
+                "job-search-card",
+            }
+            for class_name in tag.get("class", [])
+        )
+    )
+
+
+def build_job(title, url, company=None, location=None):
+    return {
+        "title": clean_text(title) or "LinkedIn job",
+        "url": normalize_url(url),
+        "company": clean_text(company),
+        "location": clean_text(location),
+    }
+
+
 def extract_jobs(html: str):
     soup = BeautifulSoup(html, "html.parser")
     results = []
@@ -118,17 +164,51 @@ def extract_jobs(html: str):
         title = a.get_text(strip=True)
         if not href:
             continue
-        url = normalize_url(href)
-        results.append((title, url))
+        card = find_job_card(a)
+        company = first_text(
+            card,
+            [
+                ".base-search-card__subtitle",
+                ".job-search-card__subtitle",
+                ".hidden-nested-link",
+            ],
+        )
+        location = first_text(
+            card,
+            [
+                ".job-search-card__location",
+                ".base-search-card__metadata",
+            ],
+        )
+        results.append(build_job(title, href, company, location))
 
     if results:
         return results
 
     # Fallback: regex for job links
     for m in re.findall(r"https?://www\.linkedin\.com/jobs/view/\d+", html):
-        results.append((None, normalize_url(m)))
+        results.append(build_job(None, m))
 
     return results
+
+
+def format_job_message(job, search):
+    lines = [job["title"]]
+
+    if job.get("company"):
+        lines.append(f"Company: {job['company']}")
+
+    if job.get("location"):
+        lines.append(f"Location: {job['location']}")
+
+    if search:
+        lines.append(
+            "Search: "
+            f"{search['location']} / {search['keyword_group']} / {search['keyword']}"
+        )
+
+    lines.append(job["url"])
+    return "\n".join(lines)
 
 
 def fetch_with_backoff(session, url: str):
@@ -187,7 +267,8 @@ def main():
     sent_count = 0
     seen = set()
 
-    for search_url in SEARCH_URLS:
+    for search in SEARCHES:
+        search_url = search["url"]
         for page in range(MAX_PAGES):
             start = page * PAGE_SIZE
             url = build_guest_api_url(search_url, start)
@@ -208,7 +289,10 @@ def main():
                 print(f"No jobs found for {search_url}.")
                 break
 
-            for title, job_url in jobs:
+            for job in jobs:
+                title = job["title"]
+                job_url = job["url"]
+
                 if not job_url or job_url in seen:
                     continue
                 seen.add(job_url)
@@ -219,21 +303,24 @@ def main():
                 if already_sent(con, job_url):
                     continue
 
-                msg_title = title or "LinkedIn job"
-                telegram_send(f"{msg_title}\n{job_url}")
+                telegram_send(format_job_message(job, search))
                 mark_sent(con, job_url)
                 sent_count += 1
 
                 if sent_count >= MAX_SEND_PER_RUN:
-                    telegram_send("Reached max jobs for this run. Next run will continue.")
+                    telegram_send(
+                        "Run paused.\n"
+                        f"Sent: {sent_count} job(s)\n"
+                        "Reason: reached max jobs for this run."
+                    )
                     return
 
             time.sleep(random.uniform(8, 15))
 
     if sent_count:
-        telegram_send(f"Sent {sent_count} new job(s).")
+        telegram_send(f"Run complete.\nSent: {sent_count} new job(s).")
     else:
-        telegram_send("No new jobs found.")
+        telegram_send("Run complete.\nNo new jobs found.")
 
 
 if __name__ == "__main__":
