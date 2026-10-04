@@ -78,6 +78,21 @@ Run with a different settings file:
 python index.py --config settings.example.json --dry-run
 ```
 
+## Tests
+
+Install development dependencies:
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+Run the test suite:
+```bash
+pytest
+```
+
+Tests cover core parsing, filtering, URL generation, dry-run delivery, and SQLite
+dedupe/metadata behavior without calling LinkedIn or Telegram.
+
 ## Logs
 
 The bot writes run diagnostics to the console and `logs/bot.log`.
