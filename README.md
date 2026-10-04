@@ -71,6 +71,11 @@ Collect matching jobs in the terminal without Telegram delivery:
 python index.py --no-telegram
 ```
 
+## Logs
+
+The bot writes run diagnostics to the console and `logs/bot.log`.
+Use `--debug` to include extra skip details while testing.
+
 ## Troubleshooting
 
 - **Login Challenge**: If you see "LinkedIn returned a login or challenge page", your `cookies.json` might be expired or invalid. Refresh them by logging into LinkedIn in your browser and re-exporting the cookies.

@@ -8,6 +8,9 @@ scrape_jobs.sqlite
 CVs/
 
 # ignoring the logs directory
+logs/
+
+# ignoring the Python cache directory
 __pycache__/
 
 venv/
