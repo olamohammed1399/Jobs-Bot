@@ -1,0 +1,26 @@
+{
+  "job_id": null,
+  "title": "LinkedIn scrape bot",
+  "enabled": true,
+  "url": "https://your-service.onrender.com/run",
+  "cron_secret_env": "CRON_SECRET",
+  "timezone": "Africa/Cairo",
+  "schedule": {
+    "minutes": [0],
+    "hours": [-1],
+    "mdays": [-1],
+    "months": [-1],
+    "wdays": [-1],
+    "expiresAt": 0
+  },
+  "request_timeout": 30,
+  "save_responses": false,
+  "notification": {
+    "onFailure": true,
+    "onFailureCount": 1,
+    "onSuccess": true,
+    "onDisable": true,
+    "onSslCertExpiry": true,
+    "onSslCertExpirySeconds": 604800
+  }
+}
