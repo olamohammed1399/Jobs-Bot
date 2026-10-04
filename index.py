@@ -78,21 +78,112 @@ def init_db(db_path):
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS jobs (
+            url TEXT PRIMARY KEY,
+            title TEXT,
+            company TEXT,
+            location TEXT,
+            source_search_url TEXT,
+            source_location TEXT,
+            source_keyword_group TEXT,
+            source_keyword TEXT,
+            discovered_at TEXT NOT NULL,
+            sent_at TEXT,
+            status TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO jobs(url, sent_at, discovered_at, status)
+        SELECT url, sent_at, COALESCE(sent_at, ?), 'sent'
+        FROM sent
+        """,
+        (datetime.now().isoformat(),),
+    )
     con.commit()
     return con
 
 
 def already_sent(con, url: str) -> bool:
     cur = con.cursor()
-    cur.execute("SELECT 1 FROM sent WHERE url = ?", (url,))
+    cur.execute(
+        """
+        SELECT 1
+        FROM jobs
+        WHERE url = ?
+          AND (sent_at IS NOT NULL OR status = 'sent')
+        """,
+        (url,),
+    )
     return cur.fetchone() is not None
 
 
-def mark_sent(con, url: str):
+def record_job(con, job, search, status: str):
+    now = datetime.now().isoformat()
     cur = con.cursor()
     cur.execute(
+        """
+        INSERT INTO jobs(
+            url,
+            title,
+            company,
+            location,
+            source_search_url,
+            source_location,
+            source_keyword_group,
+            source_keyword,
+            discovered_at,
+            status
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(url) DO UPDATE SET
+            title = COALESCE(excluded.title, jobs.title),
+            company = COALESCE(excluded.company, jobs.company),
+            location = COALESCE(excluded.location, jobs.location),
+            source_search_url = COALESCE(excluded.source_search_url, jobs.source_search_url),
+            source_location = COALESCE(excluded.source_location, jobs.source_location),
+            source_keyword_group = COALESCE(excluded.source_keyword_group, jobs.source_keyword_group),
+            source_keyword = COALESCE(excluded.source_keyword, jobs.source_keyword),
+            status = CASE
+                WHEN jobs.status = 'sent' THEN jobs.status
+                ELSE excluded.status
+            END
+        """,
+        (
+            job["url"],
+            job.get("title"),
+            job.get("company"),
+            job.get("location"),
+            search.get("url"),
+            search.get("location"),
+            search.get("keyword_group"),
+            search.get("keyword"),
+            now,
+            status,
+        ),
+    )
+    con.commit()
+
+
+def mark_sent(con, job, search):
+    now = datetime.now().isoformat()
+    record_job(con, job, search, "sent")
+    cur = con.cursor()
+    cur.execute(
+        """
+        UPDATE jobs
+        SET status = 'sent',
+            sent_at = COALESCE(sent_at, ?)
+        WHERE url = ?
+        """,
+        (now, job["url"]),
+    )
+    cur.execute(
         "INSERT OR IGNORE INTO sent(url, sent_at) VALUES(?, ?)",
-        (url, datetime.now().isoformat()),
+        (job["url"], now),
     )
     con.commit()
 
