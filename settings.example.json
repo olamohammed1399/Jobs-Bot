@@ -1,0 +1,30 @@
+{
+  "hours": 5,
+  "max_pages": 5,
+  "page_size": 25,
+  "max_send_per_run": 20,
+  "request_timeout": [10, 30],
+  "db_path": "scrape_jobs.sqlite",
+  "cookies_path": "cookies.json",
+  "work_type_filters": {
+    "remote": "2",
+    "all": "1%2C2%2C3"
+  },
+  "locations": [
+    {
+      "name": "Cairo",
+      "geo_id": "102007122",
+      "easy_apply": true,
+      "work_type": "all",
+      "enabled": true
+    }
+  ],
+  "keyword_groups": [
+    {
+      "name": "frontend",
+      "keywords": ["frontend", "frontend developer", "reactjs"],
+      "enabled": true
+    }
+  ],
+  "title_keywords": ["frontend", "react", "web"]
+}
