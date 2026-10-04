@@ -125,6 +125,21 @@ For a smaller scheduled run, pass CLI options through the script:
 - `scrape_jobs.sqlite`: local database used to avoid sending duplicates.
 - `logs/bot.log`: run diagnostics for scheduled executions.
 
+### Inspecting The Database
+
+The bot stores richer job metadata in the `jobs` table while keeping the older
+`sent` table for compatibility with existing databases.
+
+Count jobs by status:
+```bash
+sqlite3 scrape_jobs.sqlite "SELECT status, COUNT(*) FROM jobs GROUP BY status;"
+```
+
+Show recently discovered jobs:
+```bash
+sqlite3 scrape_jobs.sqlite "SELECT discovered_at, status, title, company, location FROM jobs ORDER BY discovered_at DESC LIMIT 10;"
+```
+
 ## Troubleshooting
 
 - **Login Challenge**: If you see "LinkedIn returned a login or challenge page", your `cookies.json` might be expired or invalid. Refresh them by logging into LinkedIn in your browser and re-exporting the cookies.
