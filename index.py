@@ -485,6 +485,7 @@ def main(options: RuntimeOptions, settings):
     )
 
     sent_count = 0
+    processed_count = 0
     extracted_count = 0
     duplicate_count = 0
     title_skip_count = 0
@@ -552,9 +553,11 @@ def main(options: RuntimeOptions, settings):
                     duplicate_count += 1
                     continue
                 seen.add(job_url)
+                record_job(con, job, search, "discovered")
 
                 if title and not title_matches(title, title_keywords):
                     title_skip_count += 1
+                    record_job(con, job, search, "skipped_title")
                     if options.debug:
                         LOGGER.debug("Skipped title mismatch: %s", title)
                     continue
@@ -567,18 +570,20 @@ def main(options: RuntimeOptions, settings):
 
                 sent = deliver_message(format_job_message(job, search), options)
                 if sent:
-                    mark_sent(con, job_url)
-                sent_count += 1
+                    mark_sent(con, job, search)
+                    sent_count += 1
+                processed_count += 1
 
-                if sent_count >= options.max_send:
+                if processed_count >= options.max_send:
                     deliver_message(
                         "Run paused.\n"
-                        f"Processed: {sent_count} matching job(s)\n"
+                        f"Processed: {processed_count} matching job(s)\n"
                         "Reason: reached max jobs for this run.",
                         options,
                     )
                     LOGGER.info(
-                        "Run paused. processed=%s extracted=%s duplicates=%s title_skips=%s",
+                        "Run paused. processed=%s sent=%s extracted=%s duplicates=%s title_skips=%s",
+                        processed_count,
                         sent_count,
                         extracted_count,
                         duplicate_count,
@@ -588,16 +593,18 @@ def main(options: RuntimeOptions, settings):
 
             time.sleep(random.uniform(8, 15))
 
-    if sent_count:
+    if processed_count:
         deliver_message(
-            f"Run complete.\nProcessed: {sent_count} matching job(s).",
+            f"Run complete.\nProcessed: {processed_count} matching job(s).\n"
+            f"Sent: {sent_count} job(s).",
             options,
         )
     else:
         deliver_message("Run complete.\nNo new jobs found.", options)
 
     LOGGER.info(
-        "Run complete. processed=%s extracted=%s duplicates=%s title_skips=%s",
+        "Run complete. processed=%s sent=%s extracted=%s duplicates=%s title_skips=%s",
+        processed_count,
         sent_count,
         extracted_count,
         duplicate_count,
