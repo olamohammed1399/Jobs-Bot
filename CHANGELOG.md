@@ -16,3 +16,11 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 - Removed `telegram_bot_data.py` (secrets now in `.env`).
+
+
+## [2026-01-19]
+### Refactored
+- Extract `static config in index.py` to config.py.
+
+### Added
+- Extract `static search links and keywords in index.py` to search_config.py.

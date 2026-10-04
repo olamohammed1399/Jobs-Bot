@@ -1,7 +1,7 @@
-import os
 import re
 import json
 import time
+import random
 import sqlite3
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode
@@ -9,108 +9,24 @@ from urllib.parse import urlparse, parse_qs, urlencode
 import requests
 from bs4 import BeautifulSoup
 
-from config import BOT_TOKEN, CHAT_ID
+from config import (
+    BOT_TOKEN,
+    CHAT_ID,
+    DB_PATH,
+    COOKIES_PATH,
+    MAX_PAGES,
+    PAGE_SIZE,
+    MAX_SEND_PER_RUN
+)
 
-DB_PATH = "scrape_jobs.sqlite"
-COOKIES_PATH = "cookies.json"
-HOURS = 1  # 1 hour
-TIME_PERIOD = HOURS * 3600  # 3600 seconds * HOURS
-GEO_ID = "106155005"    # Egypt
-IS_EASY_APPLY = 'true'  # for easy apply filter
+from search_config import (
+    SEARCH_URLS,
+    TITLE_KEYWORDS
+)
 
-EGYPT_FRONTEND_SEARCH_URLS = [
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=frontend"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=frontend%20developer"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=reactjs"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=reactjs%20developer"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-]
-
-EGYPT_BACKEND_SEARCH_URLS = [
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=backend"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=backend%20developer"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=nodejs"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=nodejs%20developer"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-]
-
-EGYPT_MERN_STACK_SEARCH_URLS = [
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=mern"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_AL={IS_EASY_APPLY}&geoId={GEO_ID}&f_TPR=r{TIME_PERIOD}&keywords=mern%20stack"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-]
-
-FRONTEND_SEARCH_URLS = [
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=frontend"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=frontend%20developer"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=reactjs"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=reactjs%20developer"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-]
-
-BACKEND_SEARCH_URLS = [
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=backend"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=backend%20developer"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=nodejs"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=nodejs%20developer"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-]
-
-MERN_STACK_SEARCH_URLS = [
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=mern"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-    
-    (f"https://www.linkedin.com/jobs/search/?f_TPR=r{TIME_PERIOD}&f_WT=2&keywords=mern%20stack"
-    "&origin=JOB_SEARCH_PAGE_JOB_FILTER&refresh=true"),
-]
-
-# Add more search URLs here
-
-SEARCH_URLS = [
-    *EGYPT_FRONTEND_SEARCH_URLS,
-    *EGYPT_BACKEND_SEARCH_URLS,
-    *EGYPT_MERN_STACK_SEARCH_URLS,
-    *FRONTEND_SEARCH_URLS,
-    *BACKEND_SEARCH_URLS,
-    *MERN_STACK_SEARCH_URLS,
-]
-
-TITLE_KEYWORDS = [
-    "frontend", "front-end", "front end", "react", "reactjs", "next.js", "nextjs",
-    "web", "backend", "back-end", "back end", "node", "nodejs", "express", "mern", "mern stack",
-    "Fullstack", "fullstack", "full-stack", "full stack"
-]
-
-MAX_PAGES = 5
-PAGE_SIZE = 25
-MAX_SEND_PER_RUN = 20
-
+MAX_FETCH_RETRIES = 3
+REQUEST_TIMEOUT = (10, 30)
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 def init_db():
     con = sqlite3.connect(DB_PATH)
@@ -140,8 +56,6 @@ def mark_sent(con, url: str):
         (url, datetime.now().isoformat()),
     )
     con.commit()
-
-
 
 
 def telegram_send(text: str):
@@ -217,6 +131,46 @@ def extract_jobs(html: str):
     return results
 
 
+def fetch_with_backoff(session, url: str):
+    last_error = None
+
+    for attempt in range(MAX_FETCH_RETRIES):
+        try:
+            resp = session.get(url, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.RequestException as exc:
+            last_error = exc
+            wait_seconds = (2 ** attempt) * 15 + random.uniform(2, 8)
+            print(
+                f"LinkedIn request failed ({exc.__class__.__name__}). "
+                f"Retrying in {wait_seconds:.1f}s..."
+            )
+            time.sleep(wait_seconds)
+            continue
+
+        if resp.status_code not in RETRYABLE_STATUS_CODES:
+            return resp
+
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after and retry_after.isdigit():
+            wait_seconds = int(retry_after)
+        else:
+            wait_seconds = (2 ** attempt) * 30
+
+        wait_seconds += random.uniform(2, 8)
+        print(
+            f"LinkedIn returned {resp.status_code}. "
+            f"Retrying in {wait_seconds:.1f}s..."
+        )
+        time.sleep(wait_seconds)
+
+    if last_error:
+        print(f"Skipping page after repeated request failures: {last_error}")
+        return None
+
+    print(f"Skipping page after repeated LinkedIn status {resp.status_code}.")
+    return resp
+
+
 def main():
     con = init_db()
     session = requests.Session()
@@ -237,7 +191,10 @@ def main():
         for page in range(MAX_PAGES):
             start = page * PAGE_SIZE
             url = build_guest_api_url(search_url, start)
-            resp = session.get(url, timeout=20)
+            resp = fetch_with_backoff(session, url)
+            if resp is None:
+                break
+
             if resp.status_code != 200:
                 print(f"Failed to fetch page {page} for {search_url}: {resp.status_code}")
                 break
@@ -271,7 +228,7 @@ def main():
                     telegram_send("Reached max jobs for this run. Next run will continue.")
                     return
 
-            time.sleep(1)
+            time.sleep(random.uniform(8, 15))
 
     if sent_count:
         telegram_send(f"Sent {sent_count} new job(s).")
