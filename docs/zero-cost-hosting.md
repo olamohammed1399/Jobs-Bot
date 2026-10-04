@@ -138,4 +138,5 @@ POST https://your-service.example/run
 Header: X-Cron-Secret: your-secret
 ```
 
-The detailed cron-job.org dashboard setup belongs to issue #20.
+For the full dashboard setup, schedule recommendations, and troubleshooting
+steps, see [cron-job.org Setup](cron-job-org-setup.md).
