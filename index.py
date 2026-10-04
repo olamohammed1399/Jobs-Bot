@@ -78,21 +78,112 @@ def init_db(db_path):
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS jobs (
+            url TEXT PRIMARY KEY,
+            title TEXT,
+            company TEXT,
+            location TEXT,
+            source_search_url TEXT,
+            source_location TEXT,
+            source_keyword_group TEXT,
+            source_keyword TEXT,
+            discovered_at TEXT NOT NULL,
+            sent_at TEXT,
+            status TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO jobs(url, sent_at, discovered_at, status)
+        SELECT url, sent_at, COALESCE(sent_at, ?), 'sent'
+        FROM sent
+        """,
+        (datetime.now().isoformat(),),
+    )
     con.commit()
     return con
 
 
 def already_sent(con, url: str) -> bool:
     cur = con.cursor()
-    cur.execute("SELECT 1 FROM sent WHERE url = ?", (url,))
+    cur.execute(
+        """
+        SELECT 1
+        FROM jobs
+        WHERE url = ?
+          AND (sent_at IS NOT NULL OR status = 'sent')
+        """,
+        (url,),
+    )
     return cur.fetchone() is not None
 
 
-def mark_sent(con, url: str):
+def record_job(con, job, search, status: str):
+    now = datetime.now().isoformat()
     cur = con.cursor()
     cur.execute(
+        """
+        INSERT INTO jobs(
+            url,
+            title,
+            company,
+            location,
+            source_search_url,
+            source_location,
+            source_keyword_group,
+            source_keyword,
+            discovered_at,
+            status
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(url) DO UPDATE SET
+            title = COALESCE(excluded.title, jobs.title),
+            company = COALESCE(excluded.company, jobs.company),
+            location = COALESCE(excluded.location, jobs.location),
+            source_search_url = COALESCE(excluded.source_search_url, jobs.source_search_url),
+            source_location = COALESCE(excluded.source_location, jobs.source_location),
+            source_keyword_group = COALESCE(excluded.source_keyword_group, jobs.source_keyword_group),
+            source_keyword = COALESCE(excluded.source_keyword, jobs.source_keyword),
+            status = CASE
+                WHEN jobs.status = 'sent' THEN jobs.status
+                ELSE excluded.status
+            END
+        """,
+        (
+            job["url"],
+            job.get("title"),
+            job.get("company"),
+            job.get("location"),
+            search.get("url"),
+            search.get("location"),
+            search.get("keyword_group"),
+            search.get("keyword"),
+            now,
+            status,
+        ),
+    )
+    con.commit()
+
+
+def mark_sent(con, job, search):
+    now = datetime.now().isoformat()
+    record_job(con, job, search, "sent")
+    cur = con.cursor()
+    cur.execute(
+        """
+        UPDATE jobs
+        SET status = 'sent',
+            sent_at = COALESCE(sent_at, ?)
+        WHERE url = ?
+        """,
+        (now, job["url"]),
+    )
+    cur.execute(
         "INSERT OR IGNORE INTO sent(url, sent_at) VALUES(?, ?)",
-        (url, datetime.now().isoformat()),
+        (job["url"], now),
     )
     con.commit()
 
@@ -394,6 +485,7 @@ def main(options: RuntimeOptions, settings):
     )
 
     sent_count = 0
+    processed_count = 0
     extracted_count = 0
     duplicate_count = 0
     title_skip_count = 0
@@ -461,9 +553,11 @@ def main(options: RuntimeOptions, settings):
                     duplicate_count += 1
                     continue
                 seen.add(job_url)
+                record_job(con, job, search, "discovered")
 
                 if title and not title_matches(title, title_keywords):
                     title_skip_count += 1
+                    record_job(con, job, search, "skipped_title")
                     if options.debug:
                         LOGGER.debug("Skipped title mismatch: %s", title)
                     continue
@@ -476,18 +570,20 @@ def main(options: RuntimeOptions, settings):
 
                 sent = deliver_message(format_job_message(job, search), options)
                 if sent:
-                    mark_sent(con, job_url)
-                sent_count += 1
+                    mark_sent(con, job, search)
+                    sent_count += 1
+                processed_count += 1
 
-                if sent_count >= options.max_send:
+                if processed_count >= options.max_send:
                     deliver_message(
                         "Run paused.\n"
-                        f"Processed: {sent_count} matching job(s)\n"
+                        f"Processed: {processed_count} matching job(s)\n"
                         "Reason: reached max jobs for this run.",
                         options,
                     )
                     LOGGER.info(
-                        "Run paused. processed=%s extracted=%s duplicates=%s title_skips=%s",
+                        "Run paused. processed=%s sent=%s extracted=%s duplicates=%s title_skips=%s",
+                        processed_count,
                         sent_count,
                         extracted_count,
                         duplicate_count,
@@ -497,16 +593,18 @@ def main(options: RuntimeOptions, settings):
 
             time.sleep(random.uniform(8, 15))
 
-    if sent_count:
+    if processed_count:
         deliver_message(
-            f"Run complete.\nProcessed: {sent_count} matching job(s).",
+            f"Run complete.\nProcessed: {processed_count} matching job(s).\n"
+            f"Sent: {sent_count} job(s).",
             options,
         )
     else:
         deliver_message("Run complete.\nNo new jobs found.", options)
 
     LOGGER.info(
-        "Run complete. processed=%s extracted=%s duplicates=%s title_skips=%s",
+        "Run complete. processed=%s sent=%s extracted=%s duplicates=%s title_skips=%s",
+        processed_count,
         sent_count,
         extracted_count,
         duplicate_count,
