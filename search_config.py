@@ -1,215 +1,122 @@
+import json
+from pathlib import Path
 from urllib.parse import quote
 
-from config import (
-    ABU_DHABI_GEO_ID,
-    ABU_DHABI_IS_EASY_APPLY,
-    CAIRO_GEO_ID,
-    CAIRO_IS_EASY_APPLY,
-    DOHA_GEO_ID,
-    DOHA_IS_EASY_APPLY,
-    EGYPT_GEO_ID,
-    EGYPT_IS_EASY_APPLY,
-    JEDDAH_GEO_ID,
-    JEDDAH_IS_EASY_APPLY,
-    KUWAIT_GEO_ID,
-    KUWAIT_IS_EASY_APPLY,
-    QATTA_GEO_ID,
-    QATTA_IS_EASY_APPLY,
-    RIYADH_GEO_ID,
-    RIYADH_IS_EASY_APPLY,
-    SPAIN_GEO_ID,
-    SPAIN_IS_EASY_APPLY,
-    SUA_GEO_ID,
-    SUA_IS_EASY_APPLY,
-    TIME_PERIOD,
-    UNITED_ARAB_EMIRATES_GEO_ID,
-    UNITED_ARAB_EMIRATES_IS_EASY_APPLY,
-)
+
+DEFAULT_SETTINGS_PATH = Path("settings.json")
 
 
-WORK_TYPE_FILTERS = {
-    "remote": "2",
-    "all": "1%2C2%2C3",
-}
-
-LOCATIONS = [
-    {
-        "name": "Cairo",
-        "geo_id": CAIRO_GEO_ID,
-        "easy_apply": CAIRO_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": True,
-    },
-    {
-        "name": "Egypt",
-        "geo_id": EGYPT_GEO_ID,
-        "easy_apply": EGYPT_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Saudi Arabia",
-        "geo_id": SUA_GEO_ID,
-        "easy_apply": SUA_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Riyadh",
-        "geo_id": RIYADH_GEO_ID,
-        "easy_apply": RIYADH_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Jeddah",
-        "geo_id": JEDDAH_GEO_ID,
-        "easy_apply": JEDDAH_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Spain",
-        "geo_id": SPAIN_GEO_ID,
-        "easy_apply": SPAIN_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Qatar",
-        "geo_id": QATTA_GEO_ID,
-        "easy_apply": QATTA_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Doha",
-        "geo_id": DOHA_GEO_ID,
-        "easy_apply": DOHA_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "United Arab Emirates",
-        "geo_id": UNITED_ARAB_EMIRATES_GEO_ID,
-        "easy_apply": UNITED_ARAB_EMIRATES_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Abu Dhabi",
-        "geo_id": ABU_DHABI_GEO_ID,
-        "easy_apply": ABU_DHABI_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Kuwait",
-        "geo_id": KUWAIT_GEO_ID,
-        "easy_apply": KUWAIT_IS_EASY_APPLY,
-        "work_type": "all",
-        "enabled": False,
-    },
-    {
-        "name": "Global remote",
-        "geo_id": None,
-        "easy_apply": None,
-        "work_type": "remote",
-        "enabled": False,
-    },
-]
-
-KEYWORD_GROUPS = [
-    {
-        "name": "frontend",
-        "keywords": [
-            "frontend",
-            "frontend developer",
-            "reactjs",
-            "reactjs developer",
-            "nextjs",
-            "javascript developer",
-        ],
-        "enabled": True,
-    },
-    {
-        "name": "backend",
-        "keywords": [
-            "backend",
-            "backend developer",
-            "nodejs",
-            "nodejs developer",
-            "expressjs",
-            "api developer",
-        ],
-        "enabled": True,
-    },
-    {
-        "name": "mern stack",
-        "keywords": [
-            "mern",
-            "mern stack",
-            "full stack developer",
-            "mongodb nodejs",
-        ],
-        "enabled": True,
-    },
-]
-
-TITLE_KEYWORDS = [
-    "frontend",
-    "front-end",
-    "front end",
-    "react",
-    "reactjs",
-    "next.js",
-    "nextjs",
-    "javascript",
-    "typescript",
-    "web",
-    "backend",
-    "back-end",
-    "back end",
-    "node",
-    "nodejs",
-    "express",
-    "expressjs",
-    "api",
-    "rest api",
-    "mern",
-    "mern stack",
-    "mongodb",
-    "mongo",
-    "fullstack",
-    "full-stack",
-    "full stack",
-    "software",
-    "software developer",
-    "software engineer",
-    "full stack developer",
-    "full stack engineer",
-    "full-stack developer",
-    "full-stack engineer",
-    "developer",
-    "engineer",
-    "developer engineer",
-    "engineer developer",
-    "web developer",
-    "ui developer",
-    "ux developer",
-    "design",
-]
+class SettingsError(ValueError):
+    pass
 
 
-def build_search_url(location, keyword):
+def load_settings(path=DEFAULT_SETTINGS_PATH):
+    settings_path = Path(path)
+    try:
+        with settings_path.open("r", encoding="utf-8") as f:
+            settings = json.load(f)
+    except FileNotFoundError as exc:
+        raise SettingsError(f"Settings file not found: {settings_path}") from exc
+    except json.JSONDecodeError as exc:
+        raise SettingsError(f"Invalid JSON in settings file: {settings_path}") from exc
+
+    validate_settings(settings, settings_path)
+    return settings
+
+
+def validate_settings(settings, settings_path):
+    required_fields = {
+        "hours": int,
+        "max_pages": int,
+        "page_size": int,
+        "max_send_per_run": int,
+        "request_timeout": list,
+        "db_path": str,
+        "cookies_path": str,
+        "work_type_filters": dict,
+        "locations": list,
+        "keyword_groups": list,
+        "title_keywords": list,
+    }
+
+    for field, expected_type in required_fields.items():
+        if field not in settings:
+            raise SettingsError(f"{settings_path}: missing required field '{field}'.")
+        if not isinstance(settings[field], expected_type):
+            raise SettingsError(
+                f"{settings_path}: field '{field}' must be {expected_type.__name__}."
+            )
+
+    for field in ["hours", "max_pages", "page_size", "max_send_per_run"]:
+        if settings[field] < 1:
+            raise SettingsError(f"{settings_path}: field '{field}' must be at least 1.")
+
+    timeout = settings["request_timeout"]
+    valid_timeout = (
+        len(timeout) == 2
+        and all(isinstance(value, (int, float)) and value > 0 for value in timeout)
+    )
+    if not valid_timeout:
+        raise SettingsError(
+            f"{settings_path}: field 'request_timeout' must contain two positive numbers."
+        )
+
+    if not settings["locations"]:
+        raise SettingsError(f"{settings_path}: at least one location is required.")
+    if not settings["keyword_groups"]:
+        raise SettingsError(f"{settings_path}: at least one keyword group is required.")
+    if not settings["title_keywords"]:
+        raise SettingsError(f"{settings_path}: at least one title keyword is required.")
+
+    for location in settings["locations"]:
+        validate_location(location, settings)
+
+    for group in settings["keyword_groups"]:
+        validate_keyword_group(group, settings_path)
+
+
+def validate_location(location, settings):
+    for field in ["name", "work_type", "enabled"]:
+        if field not in location:
+            raise SettingsError(f"Location is missing required field '{field}'.")
+
+    if location["work_type"] not in settings["work_type_filters"]:
+        raise SettingsError(
+            f"Location '{location['name']}' uses unknown work_type '{location['work_type']}'."
+        )
+
+    if not isinstance(location["enabled"], bool):
+        raise SettingsError(f"Location '{location['name']}' field 'enabled' must be boolean.")
+
+    easy_apply = location.get("easy_apply")
+    if easy_apply is not None and not isinstance(easy_apply, bool):
+        raise SettingsError(
+            f"Location '{location['name']}' field 'easy_apply' must be boolean or null."
+        )
+
+
+def validate_keyword_group(group, settings_path):
+    for field in ["name", "keywords", "enabled"]:
+        if field not in group:
+            raise SettingsError(f"{settings_path}: keyword group is missing required field '{field}'.")
+
+    if not isinstance(group["keywords"], list) or not group["keywords"]:
+        raise SettingsError(f"Keyword group '{group['name']}' must define at least one keyword.")
+
+    if not isinstance(group["enabled"], bool):
+        raise SettingsError(f"Keyword group '{group['name']}' field 'enabled' must be boolean.")
+
+
+def build_search_url(settings, location, keyword):
+    time_period = settings["hours"] * 3600
     query_parts = [
-        f"f_TPR=r{TIME_PERIOD}",
+        f"f_TPR=r{time_period}",
         f"keywords={quote(keyword)}",
     ]
 
     easy_apply = location.get("easy_apply")
     if easy_apply is not None:
-        query_parts.insert(0, f"f_AL={easy_apply}")
+        query_parts.insert(0, f"f_AL={str(easy_apply).lower()}")
 
     geo_id = location.get("geo_id")
     if geo_id:
@@ -217,7 +124,7 @@ def build_search_url(location, keyword):
 
     work_type = location.get("work_type")
     if work_type:
-        query_parts.append(f"f_WT={WORK_TYPE_FILTERS[work_type]}")
+        query_parts.append(f"f_WT={settings['work_type_filters'][work_type]}")
 
     query_parts.extend(
         [
@@ -229,28 +136,30 @@ def build_search_url(location, keyword):
     return "https://www.linkedin.com/jobs/search/?" + "&".join(query_parts)
 
 
-def build_searches(locations=LOCATIONS, keyword_groups=KEYWORD_GROUPS):
+def build_searches(settings):
     return [
         {
-            "url": build_search_url(location, keyword),
+            "url": build_search_url(settings, location, keyword),
             "location": location["name"],
             "keyword_group": group["name"],
             "keyword": keyword,
         }
-        for location in locations
+        for location in settings["locations"]
         if location["enabled"]
-        for group in keyword_groups
+        for group in settings["keyword_groups"]
         if group["enabled"]
         for keyword in group["keywords"]
     ]
 
 
-def build_search_urls(locations=LOCATIONS, keyword_groups=KEYWORD_GROUPS):
+def build_search_urls(settings):
     return [
         search["url"]
-        for search in build_searches(locations, keyword_groups)
+        for search in build_searches(settings)
     ]
 
 
-SEARCHES = build_searches()
+SETTINGS = load_settings()
+SEARCHES = build_searches(SETTINGS)
 SEARCH_URLS = [search["url"] for search in SEARCHES]
+TITLE_KEYWORDS = SETTINGS["title_keywords"]
