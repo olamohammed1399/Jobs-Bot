@@ -88,12 +88,13 @@ The default schedule is hourly:
 
 ```yaml
 schedule:
-  - cron: "0 * * * *"
+  - cron: "17 * * * *"
 ```
 
 GitHub schedules use UTC. For Cairo time, this still runs once per hour; only
-the displayed hour changes. Keep the schedule hourly until the workflow is
-stable.
+the displayed hour changes. The workflow runs at minute 17 instead of minute 0
+to avoid GitHub's busiest scheduling window. Keep the schedule hourly until the
+workflow is stable.
 
 ## Persistent State
 
