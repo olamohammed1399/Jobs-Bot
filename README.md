@@ -121,6 +121,8 @@ After the app is deployed, connect cron-job.org using
 [docs/cron-job-org-setup.md](docs/cron-job-org-setup.md).
 Optional schedule sync through cron-job.org's REST API is documented in
 [docs/cron-job-org-api-sync.md](docs/cron-job-org-api-sync.md).
+For a no-card GitHub Actions schedule, see
+[docs/github-actions-schedule.md](docs/github-actions-schedule.md).
 
 ## Tests
 

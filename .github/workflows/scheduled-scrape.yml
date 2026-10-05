@@ -1,0 +1,101 @@
+name: Scheduled Scrape
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scheduled-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    name: Run scraper
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TELEGRAM_DISABLE_WEB_PAGE_PREVIEW: "true"
+      LINKEDIN_COOKIES_JSON: ${{ secrets.LINKEDIN_COOKIES_JSON }}
+      LINKEDIN_COOKIES_BASE64: ${{ secrets.LINKEDIN_COOKIES_BASE64 }}
+      BOT_SETTINGS_JSON: ${{ secrets.BOT_SETTINGS_JSON }}
+      BOT_SETTINGS_PATH: settings.json
+      SCRAPE_MAX_PAGES: ${{ vars.SCRAPE_MAX_PAGES }}
+      SCRAPE_MAX_SEND: ${{ vars.SCRAPE_MAX_SEND }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Prepare runtime files
+        run: python scripts/prepare_runtime_files.py
+
+      - name: Restore scraper database
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git fetch origin github-actions-state --depth=1; then
+            if git show origin/github-actions-state:scrape_jobs.sqlite > scrape_jobs.sqlite 2>/dev/null; then
+              echo "Restored scrape_jobs.sqlite from github-actions-state."
+            else
+              echo "State branch exists, but scrape_jobs.sqlite was not found."
+            fi
+          else
+            echo "No github-actions-state branch found yet."
+          fi
+
+      - name: Run scraper
+        shell: bash
+        run: |
+          set -euo pipefail
+          python index.py \
+            --max-pages "${SCRAPE_MAX_PAGES:-1}" \
+            --max-send "${SCRAPE_MAX_SEND:-10}"
+
+      - name: Save scraper database
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f scrape_jobs.sqlite ]; then
+            echo "No scrape_jobs.sqlite file to save."
+            exit 0
+          fi
+
+          state_dir="$(mktemp -d)"
+          cp scrape_jobs.sqlite "$state_dir/scrape_jobs.sqlite"
+          cd "$state_dir"
+
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b github-actions-state
+          git add scrape_jobs.sqlite
+
+          if git diff --cached --quiet; then
+            echo "No scraper database changes to save."
+            exit 0
+          fi
+
+          git commit -m "chore(state): update scraper database"
+          git push --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            github-actions-state
