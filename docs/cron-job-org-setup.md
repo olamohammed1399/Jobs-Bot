@@ -158,8 +158,9 @@ network address, or your laptop.
 ## REST API Note
 
 cron-job.org also has a REST API for programmatic job management. That belongs
-to the optional API sync work in issue #21. For the first zero-cost setup, use
-the dashboard manually.
+to the optional API sync flow. For the first zero-cost setup, use the dashboard
+manually. After the dashboard flow works, see
+[cron-job.org API Sync](cron-job-org-api-sync.md).
 
 Source:
 

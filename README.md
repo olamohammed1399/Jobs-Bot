@@ -119,6 +119,8 @@ For a zero-cost cloud deployment path, see
 [docs/zero-cost-hosting.md](docs/zero-cost-hosting.md).
 After the app is deployed, connect cron-job.org using
 [docs/cron-job-org-setup.md](docs/cron-job-org-setup.md).
+Optional schedule sync through cron-job.org's REST API is documented in
+[docs/cron-job-org-api-sync.md](docs/cron-job-org-api-sync.md).
 
 ## Tests
 

@@ -21,5 +21,6 @@ venv/
 skills/
 
 .env
+cron-job.json
 
 sql/
