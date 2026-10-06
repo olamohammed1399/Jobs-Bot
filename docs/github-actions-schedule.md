@@ -82,6 +82,38 @@ The workflow:
 4. runs `python index.py --max-pages 1 --max-send 10`;
 5. saves the updated `scrape_jobs.sqlite` back to `github-actions-state`.
 
+## Trigger From cron-job.org
+
+cron-job.org can trigger this same workflow through GitHub's workflow dispatch
+API. Use this when you want cron-job.org to own the hourly schedule, while
+GitHub Actions still runs the scraper.
+
+cron-job.org settings:
+
+```text
+URL:
+https://api.github.com/repos/AbdelrahmanHassanAlii/scrape-bot/actions/workflows/scheduled-scrape.yml/dispatches
+
+Method:
+POST
+
+Headers:
+Accept: application/vnd.github+json
+Authorization: Bearer YOUR_GITHUB_TOKEN
+X-GitHub-Api-Version: 2026-03-10
+Content-Type: application/json
+
+Body:
+{"ref":"master"}
+```
+
+Replace `master` if the workflow should run from another branch. The referenced
+branch must contain `.github/workflows/scheduled-scrape.yml`.
+
+The GitHub token should be a fine-grained personal access token with access to
+`AbdelrahmanHassanAlii/scrape-bot` and `Actions: Read and write`. For a classic
+personal access token, use the `repo` scope for a private repository.
+
 ## Schedule
 
 The default schedule is hourly:

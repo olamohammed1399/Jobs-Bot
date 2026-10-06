@@ -1,0 +1,26 @@
+{
+  "title": "LinkedIn scrape bot via GitHub Actions",
+  "enabled": true,
+  "url": "https://api.github.com/repos/AbdelrahmanHassanAlii/scrape-bot/actions/workflows/scheduled-scrape.yml/dispatches",
+  "method": "POST",
+  "headers": {
+    "Accept": "application/vnd.github+json",
+    "Authorization": "Bearer YOUR_GITHUB_TOKEN",
+    "X-GitHub-Api-Version": "2026-03-10",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "ref": "master"
+  },
+  "timezone": "Africa/Cairo",
+  "schedule": {
+    "minutes": [0],
+    "hours": [-1],
+    "mdays": [-1],
+    "months": [-1],
+    "wdays": [-1],
+    "expiresAt": 0
+  },
+  "request_timeout": 30,
+  "save_responses": false
+}
